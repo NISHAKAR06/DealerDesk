@@ -5,31 +5,52 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $ScriptDir
-$TestScript = Join-Path $BackendDir "tests\test_backend_contract.py"
+$ContractTest = Join-Path $BackendDir "tests\test_backend_contract.py"
+$UnitTest = Join-Path $BackendDir "tests\test_unit_track1.py"
+$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
+
+$pythonCmd = $null
+if (Test-Path $VenvPython) {
+    $pythonCmd = $VenvPython
+} elseif (Get-Command uv -ErrorAction SilentlyContinue) {
+    $pythonCmd = "uv run python"
+} elseif (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
+    $pythonCmd = "$env:USERPROFILE\.local\bin\uv.exe"
+} elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    $pythonCmd = "py"
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    $pythonCmd = "python"
+} else {
+    Write-Host "Python not found on PATH. Please ensure Python 3.11+ is installed." -ForegroundColor Red
+    exit 1
+}
 
 Push-Location $BackendDir
 try {
-    Write-Host "`nRunning Backend Contract & Data Integrity Tests..." -ForegroundColor Yellow
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        uv run python $TestScript
-    } elseif (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
-        & "$env:USERPROFILE\.local\bin\uv.exe" run python $TestScript
-    } elseif (Get-Command py -ErrorAction SilentlyContinue) {
-        py $TestScript
-    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-        python $TestScript
+    Write-Host "`n[1/2] Running Backend Contract & Data Integrity Tests..." -ForegroundColor Yellow
+    if ($pythonCmd -eq $VenvPython) {
+        & $pythonCmd $ContractTest
     } else {
-        Write-Host "Python not found on PATH. Please ensure Python 3.11+ is installed." -ForegroundColor Red
-        exit 1
+        Invoke-Expression "$pythonCmd $ContractTest"
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Contract tests failed!" -ForegroundColor Red
+        exit $LASTEXITCODE
     }
 
+    Write-Host "`n[2/2] Running Track 1 Serializers, Pricing & Error Invariant Unit Tests..." -ForegroundColor Yellow
+    if ($pythonCmd -eq $VenvPython) {
+        & $pythonCmd $UnitTest
+    } else {
+        Invoke-Expression "$pythonCmd $UnitTest"
+    }
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "`nBackend contract tests failed!" -ForegroundColor Red
+        Write-Host "Unit tests failed!" -ForegroundColor Red
         exit $LASTEXITCODE
     }
 
     Write-Host "`n========================================" -ForegroundColor Green
-    Write-Host "   Backend Tests Completed Successfully! " -ForegroundColor Green
+    Write-Host "   All Backend Tests Completed Successfully! " -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
 } finally {
     Pop-Location

@@ -4,7 +4,7 @@ Test suites verifying the Django REST Framework backend against [`docs/API_CONTR
 
 ---
 
-## Tests Included
+## Test Suites Included
 
 1. **`tests/test_backend_contract.py`**:
    - `test_01_health_endpoint_liveness`: Liveness probe against `GET /api/health/`.
@@ -14,7 +14,16 @@ Test suites verifying the Django REST Framework backend against [`docs/API_CONTR
    - `test_05_lead_times_data_file`: Validates `data/lead_times.csv` contains exactly 40 monitored forecast SKUs.
    - `test_06_error_code_invariants`: Validates standard error code enumeration.
 
-2. **`smoke_test.py`** (Assignment Smoke Test):
+2. **`tests/test_unit_track1.py`**:
+   - `test_money_field_two_decimal_places`: Validates 2 decimal places money formatting.
+   - `test_product_create_serializer_validations`: Validates positive price, 2 decimals, and required catalogue fields.
+   - `test_order_create_serializer_validations`: Validates positive integer quantities, non-empty items, and duplicate SKU rejection.
+   - `test_contract_error_codes`: Validates API_CONTRACT error code definitions.
+
+3. **`tests/test_django_track.py`**:
+   - Full Django TestCase integration suite testing products, inventory adjustments, dealer onboarding, transactional order lifecycle, `409 INSUFFICIENT_STOCK` short-line details, and mocked supplier sync.
+
+4. **`smoke_test.py`** (Assignment Official Smoke Test):
    - Provided by the assignment grader to check endpoints, pagination, DRAFT order creation, status transitions, supplier sync, assistant, and ML forecasts.
 
 ---
@@ -22,12 +31,15 @@ Test suites verifying the Django REST Framework backend against [`docs/API_CONTR
 ## How to Run Backend Tests
 
 ```bash
-# Run backend contract verification
-python backend/tests/test_backend_contract.py
-
-# Or using the helper script
+# Run automated test suites (contract + unit tests)
 powershell backend/scripts/run-tests.ps1
 
-# Run the full assignment smoke test (with Django running on port 8000)
-python backend/smoke_test.py --base-url http://localhost:8000 --all
+# Or via bash
+./backend/scripts/run-tests.sh
+
+# Run full Django TestCase suite (requires running PostgreSQL)
+python manage.py test tests
+
+# Run the official assignment smoke test (with Django running on port 8000)
+python backend/smoke_test.py --base-url http://localhost:8000 --track django
 ```

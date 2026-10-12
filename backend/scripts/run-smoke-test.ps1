@@ -1,8 +1,8 @@
 # PowerShell script to run the assignment smoke test against a running backend
 param (
     [string]$BaseUrl = "http://localhost:8000",
-    [string]$Track = "",
-    [switch]$All = $true
+    [string]$Track = "django",
+    [switch]$All = $false
 )
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -12,18 +12,21 @@ Write-Host "========================================" -ForegroundColor Cyan
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $ScriptDir
 $SmokeScript = Join-Path $BackendDir "smoke_test.py"
+$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
 
 $smokeArgs = @("--base-url", $BaseUrl)
-if ($Track) {
-    $smokeArgs += @("--track", $Track)
-} elseif ($All) {
+if ($All) {
     $smokeArgs += "--all"
+} elseif ($Track) {
+    $smokeArgs += @("--track", $Track)
 }
 
 Push-Location $BackendDir
 try {
     Write-Host "Executing smoke_test.py with args: $smokeArgs" -ForegroundColor Yellow
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
+    if (Test-Path $VenvPython) {
+        & $VenvPython $SmokeScript @smokeArgs
+    } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
         uv run python $SmokeScript @smokeArgs
     } elseif (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
         & "$env:USERPROFILE\.local\bin\uv.exe" run python $SmokeScript @smokeArgs
@@ -38,4 +41,3 @@ try {
 } finally {
     Pop-Location
 }
-

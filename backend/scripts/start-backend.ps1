@@ -5,11 +5,18 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $ScriptDir
+$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
 
 Push-Location $BackendDir
 try {
     Write-Host "`nRunning database migrations..." -ForegroundColor Yellow
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
+    if (Test-Path $VenvPython) {
+        & $VenvPython manage.py migrate --noinput
+        Write-Host "`nSeeding catalogue & dealers..." -ForegroundColor Yellow
+        & $VenvPython manage.py seed_data
+        Write-Host "`nStarting Django server on 0.0.0.0:8000..." -ForegroundColor Green
+        & $VenvPython manage.py runserver 0.0.0.0:8000
+    } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
         uv run python manage.py migrate --noinput
         Write-Host "`nSeeding catalogue & dealers..." -ForegroundColor Yellow
         uv run python manage.py seed_data
@@ -36,4 +43,3 @@ try {
 } finally {
     Pop-Location
 }
-

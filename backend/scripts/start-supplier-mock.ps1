@@ -6,11 +6,14 @@ Write-Host "========================================" -ForegroundColor Cyan
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $ScriptDir
 $MockScript = Join-Path $BackendDir "supplier_mock\mock_supplier.py"
+$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
 
 Push-Location $BackendDir
 try {
-    Write-Host "Starting Mock Supplier on port 9000..." -ForegroundColor Yellow
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
+    Write-Host "Starting Mock Supplier on port 8099..." -ForegroundColor Yellow
+    if (Test-Path $VenvPython) {
+        & $VenvPython $MockScript @args
+    } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
         uv run python $MockScript @args
     } elseif (Test-Path "$env:USERPROFILE\.local\bin\uv.exe") {
         & "$env:USERPROFILE\.local\bin\uv.exe" run python $MockScript @args
