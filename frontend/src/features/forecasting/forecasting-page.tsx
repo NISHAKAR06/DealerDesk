@@ -29,7 +29,7 @@ import { StockBadge } from '@/components/common/status-badge';
 
 export const ForecastingPage: React.FC = () => {
   const [searchSku, setSearchSku] = useState('');
-  const [selectedSku, setSelectedSku] = useState<string>('FIL-1012');
+  const [selectedSku, setSelectedSku] = useState<string>('FIL-1016');
 
   // Query reorder suggestions
   const {
