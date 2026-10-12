@@ -1,0 +1,26 @@
+dealer_code,name,city,phone,email,gstin,credit_limit
+DLR-001,ABC Motors,Kochi,9310247930,orders@abcmotors.in,27AABP5506A1Z6,50000.00
+DLR-002,Speedway Auto Parts,Mangaluru,9650597111,orders@speedwayautoparts.in,36AABC6568G1Z5,50000.00
+DLR-003,Ride Easy Accessories,Mangaluru,9883764739,orders@rideeasyaccessories.in,29AABP1583H1Z6,50000.00
+DLR-004,Moto Hub,Hubballi,9695227594,orders@motohub.in,33AABC9655F1Z7,500000.00
+DLR-005,Throttle Point,Mangaluru,9506846441,orders@throttlepoint.in,29AABF5706F1Z5,250000.00
+DLR-006,Gear Up Bikes,Pune,9638092088,orders@gearupbikes.in,33AABP8507C1Z2,100000.00
+DLR-007,Wheels & Deals,Hyderabad,9214159864,orders@wheelsdeals.in,29AABH2853G1Z8,250000.00
+DLR-008,Torque Traders,Bengaluru,9462467962,orders@torquetraders.in,36AABF7683F1Z2,250000.00
+DLR-009,Highway Riders Store,Mangaluru,9357647309,orders@highwayridersstore.in,29AABH7426F1Z4,500000.00
+DLR-010,Pitstop Spares,Chennai,9692009574,orders@pitstopspares.in,27AABF4132H1Z7,500000.00
+DLR-011,Kickstart Auto,Goa,9894453076,orders@kickstartauto.in,36AABF5676C1Z8,150000.00
+DLR-012,Chain Reaction Motors,Pune,9145092409,orders@chainreactionmotors.in,36AABF5153G1Z1,100000.00
+DLR-013,Apex Moto Parts,Kochi,9262816124,orders@apexmotoparts.in,33AABH2232D1Z2,250000.00
+DLR-014,Redline Garage,Hyderabad,9780420510,orders@redlinegarage.in,32AABH2254A1Z5,100000.00
+DLR-015,BikeCare Centre,Belagavi,9226918957,orders@bikecarecentre.in,36AABP9010F1Z6,100000.00
+DLR-016,Velocity Spares,Hubballi,9928797793,orders@velocityspares.in,30AABP4078F1Z9,500000.00
+DLR-017,RPM Accessories,Hubballi,9250924354,orders@rpmaccessories.in,33AABH4516B1Z1,500000.00
+DLR-018,Track Day Gear,Mysuru,9810760913,orders@trackdaygear.in,36AABC8270A1Z3,250000.00
+DLR-019,City Moto Mart,Hyderabad,9251549020,orders@citymotomart.in,27AABC7737C1Z2,150000.00
+DLR-020,Sprocket & Co,Pune,9204878706,orders@sprocketco.in,36AABF5602D1Z6,500000.00
+DLR-021,Ignition Auto,Hyderabad,9374973882,orders@ignitionauto.in,27AABH3487A1Z6,150000.00
+DLR-022,Saddle Up Spares,Goa,9734618711,orders@saddleupspares.in,36AABP9228G1Z5,100000.00
+DLR-023,Overdrive Motors,Mangaluru,9781136738,orders@overdrivemotors.in,33AABH2636G1Z3,150000.00
+DLR-024,Turnpike Traders,Belagavi,9507998193,orders@turnpiketraders.in,32AABH5912F1Z1,250000.00
+DLR-025,Rally Point,Mangaluru,9487504413,orders@rallypoint.in,29AABF6057D1Z7,500000.00
