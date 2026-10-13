@@ -1,0 +1,42 @@
+{
+  "selected_model": "Ridge",
+  "training_samples": 3502,
+  "num_features": 16,
+  "feature_names": [
+    "lag_1",
+    "lag_2",
+    "lag_3",
+    "lag_4",
+    "lag_8",
+    "lag_12",
+    "rolling_mean_4",
+    "rolling_mean_8",
+    "rolling_mean_12",
+    "rolling_std_4",
+    "rolling_std_12",
+    "ewma_03",
+    "sin_week",
+    "cos_week",
+    "sku_mean",
+    "lead_time_weeks"
+  ],
+  "chronological_holdout_metrics": {
+    "Ridge": {
+      "WAPE_percent": 29.86,
+      "MAE": 10.17,
+      "RMSE": 14.86
+    },
+    "GradientBoostingRegressor": {
+      "WAPE_percent": 43.57,
+      "MAE": 14.85,
+      "RMSE": 25.01
+    },
+    "RandomForestRegressor": {
+      "WAPE_percent": 37.06,
+      "MAE": 12.63,
+      "RMSE": 19.72
+    }
+  },
+  "forecast_rows_generated": 160,
+  "artifact_path": "ml\\artifacts\\demand_forecaster.joblib"
+}

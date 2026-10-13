@@ -7,6 +7,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $ScriptDir
 $ContractTest = Join-Path $BackendDir "tests\test_backend_contract.py"
 $UnitTest = Join-Path $BackendDir "tests\test_unit_track1.py"
+$Track2Test = Join-Path $BackendDir "tests\test_track2_ai_ml.py"
 $VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
 
 $pythonCmd = $null
@@ -27,7 +28,7 @@ if (Test-Path $VenvPython) {
 
 Push-Location $BackendDir
 try {
-    Write-Host "`n[1/2] Running Backend Contract & Data Integrity Tests..." -ForegroundColor Yellow
+    Write-Host "`n[1/3] Running Backend Contract & Data Integrity Tests..." -ForegroundColor Yellow
     if ($pythonCmd -eq $VenvPython) {
         & $pythonCmd $ContractTest
     } else {
@@ -38,7 +39,7 @@ try {
         exit $LASTEXITCODE
     }
 
-    Write-Host "`n[2/2] Running Track 1 Serializers, Pricing & Error Invariant Unit Tests..." -ForegroundColor Yellow
+    Write-Host "`n[2/3] Running Track 1 Serializers, Pricing & Error Invariant Unit Tests..." -ForegroundColor Yellow
     if ($pythonCmd -eq $VenvPython) {
         & $pythonCmd $UnitTest
     } else {
@@ -46,6 +47,17 @@ try {
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Unit tests failed!" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+
+    Write-Host "`n[3/3] Running Track 2 AI Assistant, Forecasting & Reorder Engine Tests..." -ForegroundColor Yellow
+    if ($pythonCmd -eq $VenvPython) {
+        & $pythonCmd $Track2Test
+    } else {
+        Invoke-Expression "$pythonCmd $Track2Test"
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Track 2 tests failed!" -ForegroundColor Red
         exit $LASTEXITCODE
     }
 

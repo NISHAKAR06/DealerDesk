@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
 CONTRACT_TEST="$BACKEND_DIR/tests/test_backend_contract.py"
 UNIT_TEST="$BACKEND_DIR/tests/test_unit_track1.py"
+TRACK2_TEST="$BACKEND_DIR/tests/test_track2_ai_ml.py"
 
 echo "========================================"
 echo "   VIKMO DealerDesk - Backend Tests     "
@@ -27,12 +28,16 @@ else
 fi
 
 echo ""
-echo "[1/2] Running Backend Contract & Data Integrity Tests..."
+echo "[1/3] Running Backend Contract & Data Integrity Tests..."
 $PYTHON_CMD "$CONTRACT_TEST"
 
 echo ""
-echo "[2/2] Running Track 1 Serializers, Pricing & Error Invariant Unit Tests..."
+echo "[2/3] Running Track 1 Serializers, Pricing & Error Invariant Unit Tests..."
 $PYTHON_CMD "$UNIT_TEST"
+
+echo ""
+echo "[3/3] Running Track 2 AI Assistant, Forecasting & Reorder Engine Tests..."
+$PYTHON_CMD "$TRACK2_TEST"
 
 echo ""
 echo "========================================"

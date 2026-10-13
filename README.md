@@ -29,13 +29,20 @@ DealerDesk/
 │   │   └── sales_history.csv          # Historical weekly unit sales
 │   ├── dealerdesk/                    # Django project settings & root URLs
 │   │   ├── settings.py                # Environment-driven settings (PostgreSQL only)
-│   │   ├── urls.py                    # Root URL router
+│   │   ├── urls.py                    # Root URL router (mounts core.urls & ml.urls)
 │   │   └── wsgi.py                    # WSGI application
-│   ├── ml/                            # ML forecasting data and models
+│   ├── ml/                            # Track 2: Dedicated AI & ML Django Application
+│   │   ├── artifacts/                 # Serialized scikit-learn model (demand_forecaster.joblib) & metrics
+│   │   ├── services/                  # AssistantService (Gemini LLM) & ForecastingService (ML inference)
+│   │   ├── apps.py                    # MlConfig Django app definition
+│   │   ├── forecast.csv               # 160-row 4-week ML forecast predictions (40 SKUs x 4 weeks)
+│   │   ├── train_model.py             # Real scikit-learn training & chronological holdout evaluation
+│   │   ├── urls.py                    # Route definitions for /api/assistant/chat/, /api/forecast/, /api/reorder-suggestions/
+│   │   └── views.py                   # API endpoints for AI Assistant & Demand Forecasting
 │   ├── scripts/                       # Automation scripts (Backend ONLY)
 │   │   ├── start-backend.ps1 / .sh    # Migrates database, seeds data, starts server on :8000
 │   │   ├── start-supplier-mock.ps1/.sh# Starts mock supplier service on :8099
-│   │   ├── run-tests.ps1 / .sh        # Runs contract and unit test suites
+│   │   ├── run-tests.ps1 / .sh        # Runs contract, Track 1, and Track 2 test suites
 │   │   └── run-smoke-test.ps1 / .sh   # Runs assignment official smoke test
 │   ├── supplier_mock/                 # Mock supplier server implementation
 │   │   └── mock_supplier.py           # Simulates rate-limited paginated supplier feed
@@ -43,6 +50,7 @@ DealerDesk/
 │   │   ├── test_backend_contract.py   # Schema, URL, and data file integrity checks
 │   │   ├── test_unit_track1.py        # Serializers, pricing, GST rounding, error codes
 │   │   ├── test_django_track.py       # Full Django TestCase integration suite
+│   │   ├── test_track2_ai_ml.py       # Track 2 AI Assistant, ML Forecasting & Reorder Engine tests
 │   │   └── README.md                  # Test suite documentation
 │   ├── .venv/                         # Dedicated Python virtual environment
 │   ├── manage.py                      # Django administrative CLI
@@ -99,6 +107,10 @@ SUPPLIER_API_KEY=dev-supplier-key
 # Django Core
 DJANGO_SECRET_KEY=change-me-to-a-secure-random-secret
 DJANGO_DEBUG=1
+
+# Track 2 AI Assistant (Google Gemini Function Calling)
+GEMINI_API_KEY=your-gemini-api-key
+LLM_MODEL=gemini-flash-lite-latest
 ```
 
 > **Security Note**: Never commit `.env` to Git. `.gitignore` is configured to exclude `.env` files.
@@ -306,43 +318,46 @@ All HTTP errors conform to this unified structure:
     }
     ```
 
-#### 7. Forecasting & Reorder Engine (§10)
-- **`GET /api/reorder-suggestions/`**
-  - **Rules**: Evaluates 40 forecast SKUs against actual lead-time data (`backend/data/lead_times.csv`) and 104-week sales history (`backend/data/sales_history.csv`).
-  - **Formulas**:
-    - $L = \text{lead\_time\_weeks}$
-    - $\text{lead\_time\_demand} = \sum_{w=1}^L \text{forecast\_units}_w$
-    - $\sigma = \text{sample standard deviation of recent 12 weeks}$
-    - $\text{safety\_stock} = \lceil 1.65 \times \sigma \times \sqrt{L} \rceil$
-    - $\text{reorder\_point} = \text{lead\_time\_demand} + \text{safety\_stock}$
-    - $\text{reorder\_qty} = \max(0, \lceil \text{reorder\_point} - \text{current\_stock} \rceil)$
-  - **Response**: `200 OK`
+#### 7. Track 2 — Demand Forecasting & Reorder Engine (§10) (`backend/ml/`)
+- **Methodology & Holdout Evaluation**:
+  - **Dataset**: 104 weeks of genuine historical weekly unit demand (`backend/data/sales_history.csv`) across 40 monitored SKUs (`backend/data/lead_times.csv`).
+  - **Model**: Trained `scikit-learn` `StandardScaler + Ridge` regression pipeline (`backend/ml/train_model.py`) using 16 time-series features (`lag_1`, `lag_2`, `lag_3`, `lag_4`, `lag_8`, `lag_12`, `rolling_mean_4`, `rolling_mean_8`, `rolling_mean_12`, `rolling_std_4`, `rolling_std_12`, `ewma_03`, `sin_week`, `cos_week`, `sku_mean`, `lead_time_weeks`), evaluated against `GradientBoostingRegressor` and `RandomForestRegressor` on a 4-week chronological holdout split (`WAPE = 29.86%`, `MAE = 10.17 units`).
+  - **Serialized Model & Forecast Artifacts**: Saved strictly inside `backend/ml/` at `backend/ml/artifacts/demand_forecaster.joblib`, `backend/ml/artifacts/model_metrics.json`, and `backend/ml/forecast.csv` (160 rows = 40 SKUs $\times$ 4 future weeks: `2026-09-28`, `2026-10-05`, `2026-10-12`, `2026-10-19`). Can be retrained via `python ml/train_model.py` inside `backend/`.
+- **`GET /api/forecast/{sku}/`**
+  - **Response**: `200 OK` (4 future weeks matching `backend/ml/forecast.csv`). Returns `404 NOT_FOUND` for unknown or non-forecast SKUs.
   ```json
   {
-    "results": [
-      {
-        "sku": "FIL-1016",
-        "current_stock": 99,
-        "lead_time_weeks": 3,
-        "lead_time_demand": 70.5,
-        "safety_stock": 42,
-        "reorder_point": 112.5,
-        "reorder_qty": 14
-      }
+    "sku": "FIL-1016",
+    "forecast": [
+      {"week_start": "2026-09-28", "forecast_units": 24.4},
+      {"week_start": "2026-10-05", "forecast_units": 24.5},
+      {"week_start": "2026-10-12", "forecast_units": 24.3},
+      {"week_start": "2026-10-19", "forecast_units": 24.2}
     ]
   }
   ```
-- **`GET /api/forecast/{sku}/`**
-  - **Response**: `200 OK` (4 weeks: `2026-09-28`, `2026-10-05`, `2026-10-12`, `2026-10-19`) matching `backend/ml/forecast.csv`. Returns `404 NOT_FOUND` for non-forecast SKUs.
+- **`GET /api/reorder-suggestions/`**
+  - **Rules**: Evaluates all 40 forecast SKUs (unpaginated) in `backend/ml/services/forecasting_service.py` against live PostgreSQL `Product.stock`, supplier lead times (`lead_times.csv`), and historical demand variance (`sales_history.csv`).
+  - **Formulas**:
+    - $L = \text{lead\_time\_weeks}$
+    - $\text{lead\_time\_demand} = \sum_{w=1}^L \text{forecast\_units}_w$
+    - $\sigma = \text{sample standard deviation of most recent 12 weeks of sales}$
+    - $\text{safety\_stock} = \lceil 1.65 \times \sigma \times \sqrt{L} \rceil$
+    - $\text{reorder\_point} = \text{lead\_time\_demand} + \text{safety\_stock}$
+    - $\text{reorder\_qty} = \max(0, \lceil \text{reorder\_point} - \text{current\_stock} \rceil)$
 
-#### 8. Dealer Assistant Chat API (§9)
+#### 8. Track 2 — Dealer Assistant Chat API (§9) (`backend/ml/`)
+- **LLM Provider & Model**:
+  - **Provider**: Google Gemini (`GEMINI_API_KEY`)
+  - **Model**: `gemini-flash-lite-latest` (configurable via `LLM_MODEL`)
+  - **Architecture**: Dedicated `AssistantService` (`backend/ml/services/assistant_service.py`) implementing a multi-step function-calling loop (`search_parts`, `check_stock`, `create_draft_order`) backed strictly by live PostgreSQL queries (`Product`, `Dealer`, `Order`, `OrderService`, and `ForecastingService`) with isolated per-`session_id` conversation memory.
 - **`POST /api/assistant/chat/`**
   - **Body**: `{"session_id": "sess-1", "dealer_id": 7, "message": "Do you have brake pads for a Pulsar 150?"}`
-  - **Rules**: Generates natural dialogue responses with tool calling (`search_parts`, `check_stock`, `create_draft_order`) grounded strictly in live PostgreSQL data.
+  - **Validation**: Rejects empty/whitespace-only or excessively long ($> 4000$ chars) messages with `400 VALIDATION_ERROR`. Never confirms orders; only creates `DRAFT` orders.
   - **Response**: `200 OK`
   ```json
   {
-    "reply": "Yes — Endurance Brake Pad Set (BRK-1044) fits the Bajaj Pulsar 150...",
+    "reply": "Yes — Endurance Brake Pad Set (BRK-1044) fits the Bajaj Pulsar 150. We have 136 units in stock at ₹1459.50 per unit.",
     "cited_skus": ["BRK-1044"],
     "tool_calls": [{"name": "search_parts", "arguments": {"query": "brake pads", "vehicle": "Bajaj Pulsar 150"}}],
     "actions": []
@@ -353,8 +368,8 @@ All HTTP errors conform to this unified structure:
 
 ## 6. Testing & Quality Assurance
 
-### 1. Run Automated Test Suites
-Runs contract validation, CSV schema integrity, and unit tests:
+### 1. Run Complete Automated Test Suites (Track 1 + Track 2)
+Runs contract validation, CSV schema integrity, Track 1 unit tests, and Track 2 AI/ML unit tests:
 ```powershell
 powershell -ExecutionPolicy Bypass -File backend/scripts/run-tests.ps1
 ```
@@ -363,13 +378,13 @@ Or via shell:
 ./backend/scripts/run-tests.sh
 ```
 
-### 2. Run Full Django Integration Tests (with PostgreSQL)
+### 2. Run Track 2 AI/ML Test Suite Directly
 ```bash
 cd backend
-python manage.py test tests
+python tests/test_track2_ai_ml.py
 ```
 
-### 3. Run Official Assignment Smoke Test
+### 3. Run Official Assignment Smoke Test (All Tracks)
 1. Start the mock supplier service (in a separate terminal):
    ```powershell
    powershell -ExecutionPolicy Bypass -File backend/scripts/start-supplier-mock.ps1
@@ -378,14 +393,12 @@ python manage.py test tests
    ```powershell
    powershell -ExecutionPolicy Bypass -File backend/scripts/start-backend.ps1
    ```
-3. Execute the assignment smoke test:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File backend/scripts/run-smoke-test.ps1 -Track django
-   ```
-   Or directly via python:
+3. Execute the assignment smoke test across Track 1 (`django`), Track 2 (`aiml`), or both (`--all`):
    ```bash
    cd backend
    python smoke_test.py --base-url http://localhost:8000 --track django
+   python smoke_test.py --base-url http://localhost:8000 --track aiml
+   python smoke_test.py --base-url http://localhost:8000 --all
    ```
 
 ---
