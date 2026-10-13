@@ -7,10 +7,11 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query';
 import { apiClient, isDemoModeActive, setDemoMode } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-client';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import { navigationItems } from './sidebar';
 
 interface HeaderProps {
@@ -21,18 +22,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isFetchingCount = useIsFetching();
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [demoMode, setLocalDemoMode] = useState(isDemoModeActive());
-
-  // Listen to demo mode change events
-  useEffect(() => {
-    const handleDemoChange = (e: Event) => {
-      const customEvent = e as CustomEvent<boolean>;
-      setLocalDemoMode(customEvent.detail);
-    };
-    window.addEventListener('dealerdesk:demomode-change', handleDemoChange);
-    return () => window.removeEventListener('dealerdesk:demomode-change', handleDemoChange);
-  }, []);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Backend Health Query
   const { data: healthData, isError, isLoading, refetch } = useQuery({
@@ -40,6 +34,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile }) => {
     queryFn: () => apiClient.health.check(),
     refetchInterval: 30000,
   });
+
+  // Listen to demo mode change events (e.g. triggered from Settings page or Header)
+  useEffect(() => {
+    const handleDemoChange = async (e: Event) => {
+      const customEvent = e as CustomEvent<boolean>;
+      setLocalDemoMode(customEvent.detail);
+      await queryClient.resetQueries();
+      await refetch();
+    };
+    window.addEventListener('dealerdesk:demomode-change', handleDemoChange);
+    return () => window.removeEventListener('dealerdesk:demomode-change', handleDemoChange);
+  }, [queryClient, refetch]);
 
   // Calculate current page title and breadcrumbs
   const currentNav = navigationItems.find((item) =>
@@ -69,19 +75,35 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile }) => {
     }
   };
 
-  const handleRefreshAll = () => {
-    queryClient.invalidateQueries();
-    refetch();
+  const handleRefreshAll = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await queryClient.resetQueries();
+      await refetch();
+      toast.info(
+        isDemoModeActive()
+          ? 'Demo Mode data refreshed.'
+          : 'Live backend data refreshed from PostgreSQL.'
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  const handleToggleDemoMode = () => {
+  const handleToggleDemoMode = async () => {
     const nextVal = !demoMode;
-    setDemoMode(nextVal);
     setLocalDemoMode(nextVal);
-    queryClient.invalidateQueries();
+    setDemoMode(nextVal);
+    toast.info(
+      nextVal
+        ? 'Demo Mode enabled (using bundled preview data).'
+        : 'Live Backend Mode enabled. Fetching real data from PostgreSQL...'
+    );
   };
 
   const isHealthy = !isError && healthData?.status;
+  const showSpin = isRefreshing || isFetchingCount > 0;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/95 px-4 sm:px-6 backdrop-blur-sm">
@@ -128,11 +150,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile }) => {
           variant="outline"
           size="sm"
           onClick={handleRefreshAll}
+          disabled={isRefreshing}
           title="Refresh live data"
           className="h-8 px-2.5 text-xs text-slate-600 gap-1.5"
         >
-          <RefreshCw className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Refresh</span>
+          <RefreshCw className={`h-3.5 w-3.5 ${showSpin ? 'animate-spin text-indigo-600' : ''}`} />
+          <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
         </Button>
 
         {/* Demo Mode Toggle Pill */}

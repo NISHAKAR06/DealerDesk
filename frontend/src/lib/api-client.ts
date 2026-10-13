@@ -31,21 +31,10 @@ import {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-// Helper to determine if demo/preview fallback is active
+// Mock/Demo mode is strictly OFF by default and only active when explicitly toggled ON by the user in the UI
 export function isDemoModeActive(): boolean {
   if (typeof window === 'undefined') return false;
-  const localVal = localStorage.getItem('dealerdesk_demo_mode');
-  if (localVal !== null) {
-    return localVal === 'true';
-  }
-  return import.meta.env.VITE_ENABLE_DEMO_FALLBACK === 'true';
-}
-
-export function setDemoMode(active: boolean): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('dealerdesk_demo_mode', String(active));
-    window.dispatchEvent(new CustomEvent('dealerdesk:demomode-change', { detail: active }));
-  }
+  return localStorage.getItem('dealerdesk_demo_mode') === 'true';
 }
 
 // In-memory demo state if preview mode is toggled on
@@ -54,6 +43,20 @@ const demoState = {
   dealers: [...DEMO_DEALERS],
   orders: [...DEMO_ORDERS],
 };
+
+export function setDemoMode(active: boolean): void {
+  demoState.products = [...DEMO_PRODUCTS];
+  demoState.dealers = [...DEMO_DEALERS];
+  demoState.orders = [...DEMO_ORDERS];
+  if (typeof window !== 'undefined') {
+    if (active) {
+      localStorage.setItem('dealerdesk_demo_mode', 'true');
+    } else {
+      localStorage.removeItem('dealerdesk_demo_mode');
+    }
+    window.dispatchEvent(new CustomEvent('dealerdesk:demomode-change', { detail: active }));
+  }
+}
 
 export const axiosInstance: AxiosInstance = axios.create({
   baseURL: BASE_URL,

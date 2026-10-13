@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Activity,
   Server,
@@ -21,17 +21,27 @@ export const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [demoActive, setDemoActive] = useState(isDemoModeActive());
 
+  useEffect(() => {
+    const handleDemoChange = (e: Event) => {
+      const customEvent = e as CustomEvent<boolean>;
+      setDemoActive(customEvent.detail);
+    };
+    window.addEventListener('dealerdesk:demomode-change', handleDemoChange);
+    return () => window.removeEventListener('dealerdesk:demomode-change', handleDemoChange);
+  }, []);
+
   const { data: healthData, isError, isLoading, refetch } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => apiClient.health.check(),
     retry: 1,
   });
 
-  const handleToggleDemo = () => {
+  const handleToggleDemo = async () => {
     const nextVal = !demoActive;
-    setDemoMode(nextVal);
     setDemoActive(nextVal);
-    queryClient.invalidateQueries();
+    setDemoMode(nextVal);
+    await queryClient.resetQueries();
+    await refetch();
     toast.info(
       nextVal
         ? 'Demo Mode enabled. Utilizing bundled fixtures from data/ for catalogue and orders.'
