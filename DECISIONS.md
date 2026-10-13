@@ -4,9 +4,10 @@
 ---
 # VIKMO DealerDesk — Technical Architecture & Implementation Decisions (DECISIONS.md)
 
-**Repository:** `NISHAKAR06/DealerDesk`
-**Track Completed:** **Both Track 1 (Django Backend) AND Track 2 (AI/ML)**
-**Platform Version:** Python 3.12, Django 5.x, Django REST Framework 3.15, PostgreSQL 16 (Neon / Local)
+**Repository:** `NISHAKAR06/DealerDesk`  
+**Live Production URL:** [`https://dealerdesk-6b9h.onrender.com/`](https://dealerdesk-6b9h.onrender.com/)  
+**Track Completed:** **Both Track 1 (Django Backend) AND Track 2 (AI/ML) Fully Implemented**  
+**Platform Version:** Python 3.12, Django 5.x, Django REST Framework 3.15, PostgreSQL 16 (Neon / Render), React 18  
 
 ---
 
