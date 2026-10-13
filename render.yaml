@@ -1,0 +1,40 @@
+# ==============================================================================
+# VIKMO DealerDesk — Render Infrastructure as Code (Blueprint)
+# Docs: https://render.com/docs/blueprint-spec
+# ==============================================================================
+databases:
+  - name: dealerdesk-db
+    databaseName: dealerdesk
+    user: dealerdesk
+    plan: free
+    region: oregon
+    ipAllowList: []
+
+services:
+  - type: web
+    name: dealerdesk
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dealerdesk-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gemini-flash-lite-latest
+      - key: SUPPLIER_API_URL
+        value: http://127.0.0.1:8099
+      - key: SUPPLIER_API_KEY
+        value: dev-supplier-key
+      - key: RUN_MOCK_SUPPLIER
+        value: "true"
+

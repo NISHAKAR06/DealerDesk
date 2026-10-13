@@ -1,0 +1,42 @@
+# Git and OS metadata
+.git
+.gitignore
+.DS_Store
+Thumbs.db
+
+# Virtual environments and compiled Python bytecode
+backend/.venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Node and frontend artifacts
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and sensitive secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# IDE and Editor directories
+.vscode/
+.idea/
+.notebook/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary and test caches
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+

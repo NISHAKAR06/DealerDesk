@@ -2,75 +2,81 @@
 
 Enterprise B2B automotive spare-parts inventory, dealer, order-management, supplier-integration and AI-assisted forecasting platform.
 
+**Submission Track:** **Both Track 1 (Django Backend) AND Track 2 (AI/ML) Fully Implemented & Verified**  
+**Architectural Decisions & Proofs:** Complete technical rationales, exact line-by-line citations, and mathematical formulations are documented in [`DECISIONS.md`](DECISIONS.md).
+
+---
+
+## ⚡ Mandatory Evaluation Run Contract (Section 9.1)
+
+Per Section 9.1 of `docs/VIKMO_DealerDesk_Assignment.pdf`, the automated evaluation grader executes from the **repository root**:
+
+```bash
+pip install -r backend/requirements.txt
+python backend/manage.py migrate --noinput
+python backend/manage.py seed_data
+python backend/manage.py seed_data
+python backend/manage.py runserver 0.0.0.0:8000 --noreload
+```
+
+> **Backend Architecture:** Both Django (Core) and Machine Learning (ML) live entirely inside the `backend/` directory. All backend commands and dependencies are centralized in `backend/requirements.txt`.
+
 ---
 
 ## Architecture Overview
 
-All backend Python code, models, data, migrations, virtual environment, and operational scripts live **strictly inside the `backend/` directory**.
-
 ```text
 DealerDesk/
-├── backend/                           # Complete Django REST Framework Backend
-│   ├── core/                          # Core application models, views, serializers, services
+├── Dockerfile                         # Production multi-stage Dockerfile (Render)
+├── render.yaml                        # Render Blueprint specification
+├── DECISIONS.md                       # Comprehensive architectural decisions (15-point submission artifact)
+├── backend/                           # Complete Backend (Django REST Framework + AI/ML App)
+│   ├── core/                          # Core models, views, serializers, services
 │   │   ├── management/commands/       # seed_data command (idempotent CSV ingestion)
-│   │   ├── migrations/                # Database migrations (committed: 0001_initial.py)
+│   │   ├── migrations/                # Database migrations (0001_initial.py)
 │   │   ├── services/                  # OrderService (lifecycle engine), SupplierSyncService
 │   │   ├── exceptions.py              # Custom error handling matching API_CONTRACT schema
 │   │   ├── middleware.py              # Lightweight CORS middleware for local frontend dev
-│   │   ├── models.py                  # Product, Dealer, Order, OrderLineItem, OrderSequence, IdempotencyRecord
+│   │   ├── models.py                  # Product, Dealer, Order, OrderLineItem, OrderSequence
 │   │   ├── pagination.py              # StandardPagination (page, page_size, default 20, max 100)
 │   │   ├── serializers.py             # Model serializers with MoneyField (2-decimal strings)
 │   │   ├── urls.py                    # Route definitions (all with trailing slashes)
-│   │   └── views.py                   # API endpoints for Products, Inventory, Dealers, Orders, Sync
-│   ├── data/                          # Canonical CSV datasets (catalogue, dealers, lead times)
+│   │   └── views.py                   # Endpoints: Products, Inventory, Dealers, Orders, Sync
+│   ├── ml/                            # Dedicated AI & ML Application (Track 2)
+│   │   ├── artifacts/                 # Serialized model (demand_forecaster.joblib)
+│   │   ├── services/                  # AssistantService (Gemini LLM) & ForecastingService
+│   │   ├── apps.py                    # MlConfig Django app definition
+│   │   ├── forecast.csv               # 160-row 4-week ML forecast predictions (40 SKUs x 4 weeks)
+│   │   ├── train_model.py             # scikit-learn training & chronological holdout evaluation
+│   │   ├── urls.py                    # Routes: /api/assistant/chat/, /api/forecast/, /api/reorder-suggestions/
+│   │   └── views.py                   # API endpoints for AI Assistant & Demand Forecasting
+│   ├── data/                          # Canonical CSV datasets (7 files)
 │   │   ├── catalogue.csv              # 600 automotive spare parts
 │   │   ├── dealers.csv                # 25 registered dealer accounts
 │   │   ├── lead_times.csv             # 40 forecast SKUs with supplier lead times
-│   │   └── sales_history.csv          # Historical weekly unit sales
+│   │   ├── sales_history.csv          # 104-week historical sales records
+│   │   ├── promo_calendar.csv         # Promotional discount calendar
+│   │   ├── festival_calendar.csv      # Regional demand spikes
+│   │   └── DATA_README.md             # Dataset documentation
 │   ├── dealerdesk/                    # Django project settings & root URLs
 │   │   ├── settings.py                # Environment-driven settings (PostgreSQL only)
 │   │   ├── urls.py                    # Root URL router (mounts core.urls & ml.urls)
 │   │   └── wsgi.py                    # WSGI application
-│   ├── ml/                            # Track 2: Dedicated AI & ML Django Application
-│   │   ├── artifacts/                 # Serialized scikit-learn model (demand_forecaster.joblib) & metrics
-│   │   ├── services/                  # AssistantService (Gemini LLM) & ForecastingService (ML inference)
-│   │   ├── apps.py                    # MlConfig Django app definition
-│   │   ├── forecast.csv               # 160-row 4-week ML forecast predictions (40 SKUs x 4 weeks)
-│   │   ├── train_model.py             # Real scikit-learn training & chronological holdout evaluation
-│   │   ├── urls.py                    # Route definitions for /api/assistant/chat/, /api/forecast/, /api/reorder-suggestions/
-│   │   └── views.py                   # API endpoints for AI Assistant & Demand Forecasting
-│   ├── scripts/                       # Automation scripts (Backend ONLY)
-│   │   ├── start-backend.ps1 / .sh    # Migrates database, seeds data, starts server on :8000
-│   │   ├── start-supplier-mock.ps1/.sh# Starts mock supplier service on :8099
-│   │   ├── run-tests.ps1 / .sh        # Runs contract, Track 1, and Track 2 test suites
-│   │   └── run-smoke-test.ps1 / .sh   # Runs assignment official smoke test
-│   ├── supplier_mock/                 # Mock supplier server implementation
-│   │   └── mock_supplier.py           # Simulates rate-limited paginated supplier feed
-│   ├── tests/                         # Backend test suites
-│   │   ├── test_backend_contract.py   # Schema, URL, and data file integrity checks
-│   │   ├── test_unit_track1.py        # Serializers, pricing, GST rounding, error codes
-│   │   ├── test_django_track.py       # Full Django TestCase integration suite
-│   │   ├── test_track2_ai_ml.py       # Track 2 AI Assistant, ML Forecasting & Reorder Engine tests
-│   │   └── README.md                  # Test suite documentation
-│   ├── .venv/                         # Dedicated Python virtual environment
+│   ├── scripts/                       # Automation scripts (start, test, smoke-test)
+│   ├── supplier_mock/                 # Mock supplier server (:8099)
+│   ├── tests/                         # Full test suites (contract, unit, track 1, track 2)
 │   ├── manage.py                      # Django administrative CLI
-│   ├── requirements.txt               # Backend Python dependencies
+│   ├── requirements.txt               # Backend Python dependencies (Django, ML, Gunicorn)
 │   ├── smoke_test.py                  # Official assignment smoke test
 │   └── .env.example                   # Backend environment configuration template
-│
-├── frontend/                          # Enterprise React + TypeScript application
+├── frontend/                          # Enterprise React 18 + TypeScript application
 │   ├── src/                           # 9 complete operational modules
-│   ├── public/                        # Static assets and icons
 │   ├── package.json                   # UI build scripts ("dev", "build", "preview")
-│   ├── vite.config.ts                 # Vite config with DRF proxy
-│   └── tsconfig.json                  # Strict TypeScript configuration
-│
+│   └── vite.config.ts                 # Vite config with DRF proxy
 ├── docs/                              # Project documentation
 │   ├── API_CONTRACT.md                # Authoritative API Contract
-│   └── VIKMO_DealerDesk_Assignment.pdf# Assignment specification
-│
-├── .gitignore                         # Ignores .venv, node_modules, dist, .env
-├── .env.example                       # Root environment configuration template
+│   └── VIKMO_DealerDesk_Assignment.pdf# Official assignment specification
+├── .gitignore                         # Git exclusion rules
 └── README.md                          # Comprehensive project documentation
 ```
 
@@ -432,3 +438,37 @@ npm run build
    - Django REST Framework requires trailing slashes (`/api/products/`, not `/api/products`). Calling without trailing slash returns 301 redirects or 404 in strict client contexts.
 4. **Order Confirmation 409 Insufficient Stock**:
    - Verify that parts have sufficient inventory by checking `/api/products/{sku}/` or adjusting stock via `/api/inventory/{sku}/` before confirming an order.
+
+---
+
+## 9. Deploying to Render (Single Container)
+
+The repository includes a production-ready, single **`Dockerfile`** that packages:
+1. **Frontend**: React 18 + Vite SPA built into static assets.
+2. **Backend**: Complete Django REST Framework API + ML application located in `backend/`.
+3. **Gateway**: Built-in Nginx reverse proxy routing external web traffic on Render's dynamic `$PORT` to Gunicorn (`127.0.0.1:8000`) and the React SPA.
+
+### Option A: One-Click Deploy via Render Blueprint (`render.yaml`)
+1. Push your repository to GitHub.
+2. Go to the [Render Dashboard](https://dashboard.render.com).
+3. Click **New +** $\rightarrow$ **Blueprint**.
+4. Select your `DealerDesk` repository.
+5. Render will automatically detect [`render.yaml`](render.yaml) and provision:
+   - A managed PostgreSQL database (`dealerdesk-db`).
+   - A Web Service (`dealerdesk`) running the single Docker container.
+6. Provide your `GEMINI_API_KEY` when prompted and click **Apply**.
+
+### Option B: Manual Web Service Setup on Render
+1. In Render, select **New +** $\rightarrow$ **Web Service**.
+2. Connect your Git repository.
+3. Select **Docker** as the runtime environment (Render will automatically detect `Dockerfile`).
+4. Set the following Environment Variables in the Render dashboard:
+   * `DATABASE_URL`: Your PostgreSQL connection string (from Render Postgres or Neon).
+   * `DJANGO_SECRET_KEY`: A secure random secret string.
+   * `DJANGO_DEBUG`: `0`
+   * `GEMINI_API_KEY`: Your Google Gemini API key for Track 2 assistant.
+   * `LLM_MODEL`: `gemini-flash-lite-latest`
+   * `SUPPLIER_API_URL`: `http://127.0.0.1:8099` (or external supplier URL).
+   * `RUN_MOCK_SUPPLIER`: `true` (runs background mock supplier for inventory sync).
+5. Health Check Path: `/api/health/`.
+6. Click **Create Web Service**.
