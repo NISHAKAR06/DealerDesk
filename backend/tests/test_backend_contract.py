@@ -14,7 +14,7 @@ from pathlib import Path
 
 BASE_URL = os.environ.get("DEALERDESK_API_URL", "http://127.0.0.1:8000")
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BACKEND_DIR / "data"
+DATA_DIR = (BACKEND_DIR.parent / "data") if (BACKEND_DIR.parent / "data").exists() else (BACKEND_DIR / "data")
 
 MONEY_REGEX = re.compile(r"^-?\d+\.\d{2}$")
 ORDER_NO_REGEX = re.compile(r"^ORD-\d{8}-\d{4}$")

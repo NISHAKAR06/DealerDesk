@@ -214,10 +214,21 @@ def main():
         weeks = ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"]
 
         def forecast_file():
+            forecast_path = a.forecast
+            if not os.path.exists(forecast_path):
+                if os.path.exists(os.path.join("backend", forecast_path)):
+                    forecast_path = os.path.join("backend", forecast_path)
+                elif os.path.exists(os.path.join("..", forecast_path)):
+                    forecast_path = os.path.join("..", forecast_path)
             lead = os.path.join(a.data, "lead_times.csv")
-            if not os.path.exists(a.forecast):
+            if not os.path.exists(lead):
+                if os.path.exists(os.path.join("backend", lead)):
+                    lead = os.path.join("backend", lead)
+                elif os.path.exists(os.path.join("..", lead)):
+                    lead = os.path.join("..", lead)
+            if not os.path.exists(forecast_path):
                 return f"{a.forecast} not found (run this from your repo root, or pass --forecast)"
-            rows = list(csv.DictReader(open(a.forecast, encoding="utf-8")))
+            rows = list(csv.DictReader(open(forecast_path, encoding="utf-8")))
             if not rows or list(rows[0].keys())[:3] != ["sku", "week_start", "forecast_units"]:
                 return "columns must be: sku,week_start,forecast_units"
             skus = {r["sku"] for r in csv.DictReader(open(lead))} if os.path.exists(lead) else None
