@@ -70,17 +70,23 @@ import sys
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise ImproperlyConfigured("Set DATABASE_URL to a PostgreSQL URL, e.g. postgres://user:pass@localhost:5432/dealerdesk")
-DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=0)}
+DATABASES = {
+    "default": dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=0,
+        conn_health_checks=True,
+    )
+}
 DATABASES["default"].setdefault("OPTIONS", {})
 DATABASES["default"]["OPTIONS"].setdefault("connect_timeout", 15)
 if "test" not in sys.argv:
     try:
         import psycopg_pool  # noqa: F401
         DATABASES["default"]["OPTIONS"]["pool"] = {
-            "min_size": 2,
+            "min_size": 0,
             "max_size": 10,
-            "timeout": 20,
-            "max_idle": 120,
+            "timeout": 15,
+            "max_idle": 10,
         }
     except ImportError:
         pass
@@ -95,6 +101,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = (BASE_DIR.parent / "staticfiles") if (BASE_DIR.parent / "manage.py").exists() else (BASE_DIR / "staticfiles")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---- API: exact contract pagination and exception handling --------------------------
@@ -108,7 +115,7 @@ REST_FRAMEWORK = {
 }
 
 # ---- Assignment settings --------------------------------------------------------------
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = (BASE_DIR / "data") if (BASE_DIR / "data").exists() else (BASE_DIR.parent / "data")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")

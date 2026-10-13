@@ -200,6 +200,7 @@ class Command(BaseCommand):
         # Remove ephemeral test dealers created by test runners/smoke test
         stray_dealers = set(existing_dealers.keys()) - seen_dealer_codes
         if stray_dealers:
+            OrderLineItem.objects.filter(order__dealer__dealer_code__in=stray_dealers).delete()
             Order.objects.filter(dealer__dealer_code__in=stray_dealers).delete()
             Dealer.objects.filter(dealer_code__in=stray_dealers).delete()
 
