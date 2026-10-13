@@ -27,11 +27,21 @@ class ForecastingService:
 
     @classmethod
     def _get_ml_dir(cls) -> Path:
-        return Path(settings.BASE_DIR) / "ml"
+        ml_dir = Path(settings.BASE_DIR) / "ml"
+        if not ml_dir.exists() and (Path(settings.BASE_DIR).parent / "ml").exists():
+            return Path(settings.BASE_DIR).parent / "ml"
+        return ml_dir
 
     @classmethod
     def _get_data_dir(cls) -> Path:
-        return Path(settings.DATA_DIR)
+        data_dir = getattr(settings, "DATA_DIR", None)
+        if data_dir and Path(data_dir).exists():
+            return Path(data_dir)
+        if (Path(settings.BASE_DIR) / "data").exists():
+            return Path(settings.BASE_DIR) / "data"
+        if (Path(settings.BASE_DIR).parent / "data").exists():
+            return Path(settings.BASE_DIR).parent / "data"
+        return Path(settings.BASE_DIR) / "data"
 
     @classmethod
     def get_trained_artifact(cls) -> Dict[str, Any]:
@@ -50,7 +60,9 @@ class ForecastingService:
     def load_forecasts_by_sku(cls) -> Dict[str, List[Dict[str, Any]]]:
         """Reads 4-week forecasts from backend/ml/forecast.csv (or runs live model inference if missing)."""
         forecast_csv = cls._get_ml_dir() / "forecast.csv"
-        if not forecast_csv.exists():
+        if not forecast_csv.exists() and (Path(settings.BASE_DIR).parent / "ml" / "forecast.csv").exists():
+            forecast_csv = Path(settings.BASE_DIR).parent / "ml" / "forecast.csv"
+        elif not forecast_csv.exists():
             train_and_generate_forecasts()
 
         forecasts: Dict[str, List[Dict[str, Any]]] = {}

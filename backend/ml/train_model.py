@@ -224,7 +224,8 @@ def train_and_generate_forecasts() -> Dict:
     """Trains the winning scikit-learn model on all historical weeks, saves artifact, and writes backend/ml/forecast.csv."""
     ml_dir = Path(__file__).resolve().parent
     backend_dir = ml_dir.parent
-    data_dir = backend_dir / "data"
+    data_dir = (backend_dir / "data") if (backend_dir / "data").exists() else (backend_dir.parent / "data")
+    root_dir = backend_dir.parent
     artifacts_dir = ml_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -271,6 +272,15 @@ def train_and_generate_forecasts() -> Dict:
         writer = csv.DictWriter(f, fieldnames=["sku", "week_start", "forecast_units"])
         writer.writeheader()
         writer.writerows(forecast_rows)
+
+    # Mirror to root ml/forecast.csv if root ml exists
+    root_ml_dir = root_dir / "ml"
+    if root_ml_dir.exists() and root_ml_dir != ml_dir:
+        root_forecast_path = root_ml_dir / "forecast.csv"
+        with open(root_forecast_path, mode="w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["sku", "week_start", "forecast_units"])
+            writer.writeheader()
+            writer.writerows(forecast_rows)
 
     # Write model evaluation metrics summary
     metrics_summary = {

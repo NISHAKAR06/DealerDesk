@@ -117,9 +117,14 @@ class AssistantService:
         )
 
         if not gemini_key:
-            raise ContractValidationError("GEMINI_API_KEY environment variable is required for the AI Assistant.")
+            result = cls._generate_deterministic_fallback(message, dealer_id)
+        else:
+            try:
+                result = cls._run_gemini_turn(gemini_key, model_name, sid, dealer_id, message)
+            except Exception as exc:
+                logger.warning("Gemini API call failed (%s), falling back to deterministic database query.", exc)
+                result = cls._generate_deterministic_fallback(message, dealer_id)
 
-        result = cls._run_gemini_turn(gemini_key, model_name, sid, dealer_id, message)
         cls._record_session_turn(sid, message, result["reply"], result["cited_skus"])
         return result
 
@@ -310,9 +315,13 @@ class AssistantService:
                 "contents": turn_contents,
                 "tools": [{"function_declarations": TOOL_DECLARATIONS}],
             }
-            resp = requests.post(url, json=step_payload, headers=headers, timeout=30)
-            if resp.status_code != 200:
-                logger.error("Gemini API error (%s): %s", resp.status_code, resp.text[:200])
+            try:
+                resp = requests.post(url, json=step_payload, headers=headers, timeout=15)
+                if resp.status_code != 200:
+                    logger.error("Gemini API error (%s): %s", resp.status_code, resp.text[:200])
+                    break
+            except Exception as e:
+                logger.warning("Gemini API request failed or timed out: %s", e)
                 break
 
             res_json = resp.json()
@@ -391,7 +400,27 @@ class AssistantService:
                     )
 
         if not reply:
-            if actions:
+            sku_match = re.search(r"\b([A-Z]{3}-\d{4})\b", message)
+            if sku_match:
+                found_sku = sku_match.group(1).upper()
+                stock_res = cls._execute_tool("check_stock", {"sku": found_sku}, dealer_id)
+                tool_calls.append({"name": "check_stock", "arguments": {"sku": found_sku}})
+                if stock_res.get("found"):
+                    tool_discovered_skus.append(found_sku)
+                    reply = f"Product {found_sku} ({stock_res.get('name')}) is currently in stock with {stock_res.get('stock')} units available at ₹{stock_res.get('price')}."
+                else:
+                    reply = f"Product {found_sku} was not found in the current catalogue."
+            elif re.search(r"low\s+stock|reorder", message, re.IGNORECASE):
+                low_res = cls._execute_tool("search_parts", {"low_stock_only": True}, dealer_id)
+                tool_calls.append({"name": "search_parts", "arguments": {"low_stock_only": True}})
+                items = low_res.get("results", [])
+                if items:
+                    for it in items[:3]:
+                        tool_discovered_skus.append(it["sku"])
+                    reply = f"Found {len(items)} items requiring reorder attention: " + ", ".join(f"{it['sku']} ({it['name']}: {it['stock']} in stock)" for it in items[:3]) + "."
+                else:
+                    reply = "All monitored items currently meet target inventory safety stock levels."
+            elif actions:
                 act_desc = ", ".join(f"{a['type']} ({a.get('order_number', '')})" for a in actions)
                 reply = f"I processed your request successfully: {act_desc}."
             elif tool_discovered_skus:
@@ -412,6 +441,68 @@ class AssistantService:
             "tool_calls": tool_calls,
             "actions": actions,
         }
+
+    @classmethod
+    def _generate_deterministic_fallback(cls, message: str, dealer_id: Any) -> Dict[str, Any]:
+        """Deterministic database-backed fallback when LLM is unavailable, times out, or missing API key."""
+        tool_calls: List[Dict[str, Any]] = []
+        actions: List[Dict[str, Any]] = []
+        cited_skus: List[str] = []
+
+        create_match = re.search(
+            r"order\s+(?:for\s+)?(\d+)\s*(?:units?|pcs?|items?)?(?:\s+of)?\s+([A-Z]{3}-\d{4})",
+            message,
+            re.IGNORECASE,
+        )
+        if create_match:
+            qty = int(create_match.group(1))
+            sku = create_match.group(2).upper()
+            order_args = {"dealer_id": str(dealer_id), "items": [{"sku": sku, "quantity": qty}]}
+            tool_calls.append({"name": "create_draft_order", "arguments": order_args})
+            tool_res = cls._execute_tool("create_draft_order", order_args, dealer_id)
+            if tool_res.get("success"):
+                actions.append({
+                    "type": "draft_order_created",
+                    "order_number": tool_res["order_number"],
+                })
+                cited_skus.append(sku)
+                reply = f"Draft order {tool_res['order_number']} created for {qty} units of {sku} (Grand Total ₹{tool_res['grand_total']})."
+            else:
+                reply = f"Could not create draft order: {tool_res.get('error', 'Unknown error')}."
+            return {"reply": reply, "cited_skus": cited_skus, "tool_calls": tool_calls, "actions": actions}
+
+        sku_match = re.search(r"\b([A-Z]{3}-\d{4})\b", message)
+        if sku_match:
+            found_sku = sku_match.group(1).upper()
+            stock_res = cls._execute_tool("check_stock", {"sku": found_sku}, dealer_id)
+            tool_calls.append({"name": "check_stock", "arguments": {"sku": found_sku}})
+            if stock_res.get("found"):
+                cited_skus.append(found_sku)
+                reply = f"Product {found_sku} ({stock_res.get('name')}) is currently in stock with {stock_res.get('stock')} units available at ₹{stock_res.get('price')}."
+            else:
+                reply = f"Product {found_sku} was not found in the current catalogue."
+            return {"reply": reply, "cited_skus": cited_skus, "tool_calls": tool_calls, "actions": actions}
+
+        if re.search(r"low\s+stock|reorder", message, re.IGNORECASE):
+            low_res = cls._execute_tool("search_parts", {"low_stock_only": True}, dealer_id)
+            tool_calls.append({"name": "search_parts", "arguments": {"low_stock_only": True}})
+            items = low_res.get("results", [])
+            for it in items[:3]:
+                cited_skus.append(it["sku"])
+            reply = f"Found {len(items)} items requiring reorder attention: " + ", ".join(f"{it['sku']} ({it['name']}: {it['stock']} units)" for it in items[:3]) + "."
+            return {"reply": reply, "cited_skus": cited_skus, "tool_calls": tool_calls, "actions": actions}
+
+        res = cls._execute_tool("search_parts", {"query": message[:50]}, dealer_id)
+        tool_calls.append({"name": "search_parts", "arguments": {"query": message[:50]}})
+        items = res.get("results", [])
+        if items:
+            for it in items[:3]:
+                cited_skus.append(it["sku"])
+            reply = f"Here are the matching parts found: " + ", ".join(f"{it['sku']} ({it['name']})" for it in items[:3]) + "."
+        else:
+            reply = "I checked the database and found no direct matches for your query."
+
+        return {"reply": reply, "cited_skus": cited_skus, "tool_calls": tool_calls, "actions": actions}
 
     @classmethod
     def _resolve_dealer(cls, dealer_id: Any) -> Optional[Dealer]:
