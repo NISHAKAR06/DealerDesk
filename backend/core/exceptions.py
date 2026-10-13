@@ -143,7 +143,28 @@ def custom_exception_handler(exc, context):
         }
         return response
 
-    # Unhandled exceptions
+    # Unhandled exceptions: auto-retry once on transient cloud PostgreSQL SSL / socket drops
+    from django.db import InterfaceError, OperationalError, close_old_connections, connections
+    if isinstance(exc, (OperationalError, InterfaceError)):
+        try:
+            close_old_connections()
+            for conn in connections.all():
+                conn.close()
+        except Exception:
+            pass
+        req = context.get("request")
+        view = context.get("view")
+        if req is not None and view is not None and not getattr(req, "_db_retried", False):
+            setattr(req, "_db_retried", True)
+            handler = getattr(view, req.method.lower(), None)
+            if callable(handler):
+                try:
+                    import time
+                    time.sleep(0.2)
+                    return handler(req, *context.get("args", ()), **context.get("kwargs", {}))
+                except Exception as retry_exc:
+                    exc = retry_exc
+
     logger.exception("Unhandled server exception: %s", exc)
     return Response(
         {

@@ -35,32 +35,11 @@ def _hash_request_body(body_data: dict) -> str:
 
 class OrderService:
     @staticmethod
-    def create_draft_order(dealer_id: int, items_data: list, idempotency_key: str = None) -> Order:
-        """Creates a new DRAFT order with transactional validation, sequence number, and GST calculations."""
-        # Check idempotency first if key is provided
-        req_hash = None
-        if idempotency_key:
-            req_hash = _hash_request_body({"dealer_id": dealer_id, "items": items_data})
-            existing_record = IdempotencyRecord.objects.filter(key=idempotency_key).first()
-            if existing_record:
-                if existing_record.request_hash == req_hash:
-                    # Return original order
-                    original_order = Order.objects.filter(order_number=existing_record.order_number).first()
-                    if original_order:
-                        return original_order
-                else:
-                    raise IdempotencyConflictError(
-                        message=f"Idempotency-Key '{idempotency_key}' was reused with a different request body."
-                    )
-
+    def _validate_and_resolve_items(items_data: list) -> dict:
+        """Validates non-empty order items, unique SKUs, positive quantities, and resolves Product objects."""
         if not items_data:
             raise ContractValidationError(message="Order must contain at least one item.")
 
-        dealer = Dealer.objects.filter(id=dealer_id).first()
-        if not dealer:
-            raise ContractValidationError(message=f"Dealer with id {dealer_id} does not exist.")
-
-        # Validate unique SKUs
         seen_skus = set()
         for item in items_data:
             sku = item.get("sku")
@@ -73,20 +52,81 @@ class OrderService:
             if not isinstance(qty, int) or qty < 1:
                 raise ContractValidationError(message=f"Quantity for SKU '{sku}' must be an integer >= 1.")
 
-        # Validate all SKUs exist in catalogue
-        products_by_sku = {
-            p.sku: p for p in Product.objects.filter(sku__in=seen_skus)
-        }
+        products_by_sku = {p.sku: p for p in Product.objects.filter(sku__in=seen_skus)}
         missing_skus = seen_skus - set(products_by_sku.keys())
         if missing_skus:
             missing_list = ", ".join(sorted(missing_skus))
             raise ContractValidationError(message=f"Unknown SKU(s) in order: {missing_list}")
 
+        return products_by_sku
+
+    @staticmethod
+    def _populate_order_line_items(order: Order, items_data: list, products_by_sku: dict) -> None:
+        """Computes 18% GST with ROUND_HALF_UP per line, bulk-creates OrderLineItems, and updates order totals."""
+        subtotal_accum = Decimal("0.00")
+        tax_accum = Decimal("0.00")
+        line_items_to_create = []
+
+        for item in items_data:
+            product = products_by_sku[item["sku"]]
+            qty = item["quantity"]
+            unit_price = product.price.quantize(Decimal("0.01"))
+            line_subtotal = (unit_price * qty).quantize(Decimal("0.01"))
+            line_tax = (line_subtotal * GST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            line_total = (line_subtotal + line_tax).quantize(Decimal("0.01"))
+
+            subtotal_accum += line_subtotal
+            tax_accum += line_tax
+
+            line_items_to_create.append(
+                OrderLineItem(
+                    order=order,
+                    product=product,
+                    sku=product.sku,
+                    name=product.name,
+                    quantity=qty,
+                    unit_price=unit_price,
+                    line_subtotal=line_subtotal,
+                    line_tax=line_tax,
+                    line_total=line_total,
+                )
+            )
+
+        OrderLineItem.objects.bulk_create(line_items_to_create)
+
+        order.subtotal = subtotal_accum.quantize(Decimal("0.01"))
+        order.tax_total = tax_accum.quantize(Decimal("0.01"))
+        order.grand_total = (subtotal_accum + tax_accum).quantize(Decimal("0.01"))
+        order.updated_at = timezone.now()
+        order.save(update_fields=["subtotal", "tax_total", "grand_total", "updated_at"])
+
+    @staticmethod
+    def create_draft_order(dealer_id: int, items_data: list, idempotency_key: str = None) -> Order:
+        """Creates a new DRAFT order with transactional validation, sequence number, and GST calculations."""
+        req_hash = None
+        if idempotency_key:
+            req_hash = _hash_request_body({"dealer_id": dealer_id, "items": items_data})
+            existing_record = IdempotencyRecord.objects.filter(key=idempotency_key).first()
+            if existing_record:
+                if existing_record.request_hash == req_hash:
+                    original_order = Order.objects.filter(order_number=existing_record.order_number).first()
+                    if original_order:
+                        return original_order
+                else:
+                    raise IdempotencyConflictError(
+                        message=f"Idempotency-Key '{idempotency_key}' was reused with a different request body."
+                    )
+
+        products_by_sku = OrderService._validate_and_resolve_items(items_data)
+
+        dealer = Dealer.objects.filter(id=dealer_id).first()
+        if not dealer:
+            raise ContractValidationError(message=f"Dealer with id {dealer_id} does not exist.")
+
         with transaction.atomic():
             now_kolkata = timezone.now().astimezone(KOLKATA_TZ)
             date_str = now_kolkata.strftime("%Y%m%d")
 
-            # Thread-safe sequential order number generation
             seq_obj, _ = OrderSequence.objects.select_for_update().get_or_create(
                 date_str=date_str, defaults={"last_seq": 0}
             )
@@ -94,7 +134,6 @@ class OrderService:
             seq_obj.save(update_fields=["last_seq"])
             order_number = f"ORD-{date_str}-{seq_obj.last_seq:04d}"
 
-            # Calculate line items
             order = Order.objects.create(
                 order_number=order_number,
                 dealer=dealer,
@@ -102,42 +141,7 @@ class OrderService:
                 created_at=timezone.now(),
             )
 
-            subtotal_accum = Decimal("0.00")
-            tax_accum = Decimal("0.00")
-            line_items_to_create = []
-
-            for item in items_data:
-                product = products_by_sku[item["sku"]]
-                qty = item["quantity"]
-                unit_price = product.price.quantize(Decimal("0.01"))
-                line_subtotal = (unit_price * qty).quantize(Decimal("0.01"))
-                # 18% tax rounded ROUND_HALF_UP per line
-                line_tax = (line_subtotal * GST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                line_total = (line_subtotal + line_tax).quantize(Decimal("0.01"))
-
-                subtotal_accum += line_subtotal
-                tax_accum += line_tax
-
-                line_items_to_create.append(
-                    OrderLineItem(
-                        order=order,
-                        product=product,
-                        sku=product.sku,
-                        name=product.name,
-                        quantity=qty,
-                        unit_price=unit_price,
-                        line_subtotal=line_subtotal,
-                        line_tax=line_tax,
-                        line_total=line_total,
-                    )
-                )
-
-            OrderLineItem.objects.bulk_create(line_items_to_create)
-
-            order.subtotal = subtotal_accum.quantize(Decimal("0.01"))
-            order.tax_total = tax_accum.quantize(Decimal("0.01"))
-            order.grand_total = (subtotal_accum + tax_accum).quantize(Decimal("0.01"))
-            order.save(update_fields=["subtotal", "tax_total", "grand_total"])
+            OrderService._populate_order_line_items(order, items_data, products_by_sku)
 
             if idempotency_key and req_hash:
                 IdempotencyRecord.objects.create(
@@ -163,67 +167,11 @@ class OrderService:
         if order.status != OrderStatus.DRAFT:
             raise OrderLockedError(message=f"Cannot edit order '{order_number}' in status {order.status}.")
 
-        seen_skus = set()
-        for item in items_data:
-            sku = item.get("sku")
-            if not sku:
-                raise ContractValidationError(message="Each line item must have a SKU.")
-            if sku in seen_skus:
-                raise ContractValidationError(message=f"Duplicate SKU '{sku}' found in order.")
-            seen_skus.add(sku)
-            qty = item.get("quantity")
-            if not isinstance(qty, int) or qty < 1:
-                raise ContractValidationError(message=f"Quantity for SKU '{sku}' must be an integer >= 1.")
-
-        products_by_sku = {
-            p.sku: p for p in Product.objects.filter(sku__in=seen_skus)
-        }
-        missing_skus = seen_skus - set(products_by_sku.keys())
-        if missing_skus:
-            missing_list = ", ".join(sorted(missing_skus))
-            raise ContractValidationError(message=f"Unknown SKU(s) in order: {missing_list}")
+        products_by_sku = OrderService._validate_and_resolve_items(items_data)
 
         with transaction.atomic():
-            # Delete old items
             order.items.all().delete()
-
-            subtotal_accum = Decimal("0.00")
-            tax_accum = Decimal("0.00")
-            line_items_to_create = []
-
-            for item in items_data:
-                product = products_by_sku[item["sku"]]
-                qty = item["quantity"]
-                unit_price = product.price.quantize(Decimal("0.01"))
-                line_subtotal = (unit_price * qty).quantize(Decimal("0.01"))
-                line_tax = (line_subtotal * GST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                line_total = (line_subtotal + line_tax).quantize(Decimal("0.01"))
-
-                subtotal_accum += line_subtotal
-                tax_accum += line_tax
-
-                line_items_to_create.append(
-                    OrderLineItem(
-                        order=order,
-                        product=product,
-                        sku=product.sku,
-                        name=product.name,
-                        quantity=qty,
-                        unit_price=unit_price,
-                        line_subtotal=line_subtotal,
-                        line_tax=line_tax,
-                        line_total=line_total,
-                    )
-                )
-
-            OrderLineItem.objects.bulk_create(line_items_to_create)
-
-            order.subtotal = subtotal_accum.quantize(Decimal("0.01"))
-            order.tax_total = tax_accum.quantize(Decimal("0.01"))
-            order.grand_total = (subtotal_accum + tax_accum).quantize(Decimal("0.01"))
-            order.updated_at = timezone.now()
-            order.save(update_fields=["subtotal", "tax_total", "grand_total", "updated_at"])
-
+            OrderService._populate_order_line_items(order, items_data, products_by_sku)
             return order
 
     @staticmethod

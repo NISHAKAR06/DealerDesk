@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "core",
+    "ml",
 ]
 
 MIDDLEWARE = [
@@ -64,10 +65,25 @@ TEMPLATES = [
 WSGI_APPLICATION = "dealerdesk.wsgi.application"
 
 # ---- Database: PostgreSQL only -------------------------------------------------------
+import sys
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise ImproperlyConfigured("Set DATABASE_URL to a PostgreSQL URL, e.g. postgres://user:pass@localhost:5432/dealerdesk")
 DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=0)}
+DATABASES["default"].setdefault("OPTIONS", {})
+DATABASES["default"]["OPTIONS"].setdefault("connect_timeout", 15)
+if "test" not in sys.argv:
+    try:
+        import psycopg_pool  # noqa: F401
+        DATABASES["default"]["OPTIONS"]["pool"] = {
+            "min_size": 2,
+            "max_size": 10,
+            "timeout": 20,
+            "max_idle": 120,
+        }
+    except ImportError:
+        pass
 if DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise ImproperlyConfigured("DealerDesk requires PostgreSQL. SQLite can't test the concurrency rules.")
 

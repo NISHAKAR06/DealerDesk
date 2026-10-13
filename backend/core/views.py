@@ -289,54 +289,6 @@ def supplier_sync(request):
     return Response(summary, status=status.HTTP_200_OK)
 
 
-# ==============================================================================
-# Forecasting & Reorder API (§10)
-# ==============================================================================
-
-@api_view(["GET"])
-def reorder_suggestions(request):
-    """GET /api/reorder-suggestions/ -> Reorder suggestions for 40 forecast SKUs."""
-    from core.services.forecasting_service import ForecastingService
-
-    results = ForecastingService.get_reorder_suggestions()
-    return Response({"results": results}, status=status.HTTP_200_OK)
-
-
-@api_view(["GET"])
-def sku_forecast(request, sku):
-    """GET /api/forecast/{sku}/ -> 4 weeks forecast units."""
-    from core.services.forecasting_service import ForecastingService
-
-    forecast_data = ForecastingService.get_sku_forecast(sku.strip())
-    if not forecast_data:
-        raise ContractNotFoundError(f"SKU '{sku}' is not a forecast catalogue part.")
-    return Response(forecast_data, status=status.HTTP_200_OK)
-
-
-# ==============================================================================
-# Dealer Assistant API (§9)
-# ==============================================================================
-
-@api_view(["POST"])
-def assistant_chat(request):
-    """POST /api/assistant/chat/ -> GenAI assistant turn with tool calling."""
-    from core.services.assistant_service import AssistantService
-
-    session_id = request.data.get("session_id", "default-session")
-    dealer_id = request.data.get("dealer_id")
-    message = request.data.get("message", "")
-
-    if not message:
-        raise ContractValidationError("Message is required.")
-
-    res = AssistantService.handle_message(
-        session_id=str(session_id),
-        dealer_id=dealer_id,
-        message=message,
-    )
-    return Response(res, status=status.HTTP_200_OK)
-
-
 @api_view(["GET"])
 def supplier_sync_history(request):
     """GET /api/sync/supplier/history/ -> Audit trail of sync runs."""

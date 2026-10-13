@@ -1,18 +1,37 @@
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from rest_framework import serializers
 
 from core.models import Dealer, Order, OrderLineItem, Product
 
 
+class PriceValidationMixin:
+    """Shared DRF field validator hook for product price."""
+
+    def validate_price(self, value):
+        if value is None:
+            return None
+        try:
+            d = Decimal(str(value))
+        except (InvalidOperation, TypeError):
+            raise serializers.ValidationError("Invalid price format")
+        if d <= Decimal("0.00"):
+            raise serializers.ValidationError("Price must be strictly positive")
+        parts = str(value).split(".")
+        if len(parts) > 1 and len(parts[1]) > 2:
+            raise serializers.ValidationError("Price cannot have more than 2 decimal places")
+        return d.quantize(Decimal("0.01"))
+
+
 class MoneyField(serializers.CharField):
     """Formats Decimal values as JSON string with exactly 2 decimal places."""
+
     def to_representation(self, value):
         if value is None:
             return "0.00"
         return f"{Decimal(str(value)):.2f}"
 
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductSerializer(PriceValidationMixin, serializers.ModelSerializer):
     price = MoneyField()
     stock = serializers.IntegerField(read_only=True)
 
@@ -29,21 +48,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "description",
         ]
 
-    def validate_price(self, value):
-        try:
-            d = Decimal(str(value))
-        except (InvalidOperation, TypeError):
-            raise serializers.ValidationError("Invalid price format")
-        if d <= Decimal("0.00"):
-            raise serializers.ValidationError("Price must be strictly positive")
-        # Check at most 2 decimal places
-        parts = str(value).split(".")
-        if len(parts) > 1 and len(parts[1]) > 2:
-            raise serializers.ValidationError("Price cannot have more than 2 decimal places")
-        return d.quantize(Decimal("0.01"))
 
-
-class ProductCreateSerializer(serializers.ModelSerializer):
+class ProductCreateSerializer(PriceValidationMixin, serializers.ModelSerializer):
     price = serializers.CharField()
     description = serializers.CharField(required=False, allow_blank=True, default="")
 
@@ -62,24 +68,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "sku": {"validators": []},
         }
 
-    def validate_price(self, value):
-        try:
-            d = Decimal(str(value))
-        except (InvalidOperation, TypeError):
-            raise serializers.ValidationError("Invalid price format")
-        if d <= Decimal("0.00"):
-            raise serializers.ValidationError("Price must be strictly positive")
-        parts = str(value).split(".")
-        if len(parts) > 1 and len(parts[1]) > 2:
-            raise serializers.ValidationError("Price cannot have more than 2 decimal places")
-        return d.quantize(Decimal("0.01"))
-
     def create(self, validated_data):
         validated_data["stock"] = 0
         return super().create(validated_data)
 
 
-class ProductUpdateSerializer(serializers.ModelSerializer):
+class ProductUpdateSerializer(PriceValidationMixin, serializers.ModelSerializer):
     price = serializers.CharField(required=False)
     name = serializers.CharField(required=False)
     category = serializers.CharField(required=False)
@@ -97,20 +91,6 @@ class ProductUpdateSerializer(serializers.ModelSerializer):
             "price",
             "description",
         ]
-
-    def validate_price(self, value):
-        if value is None:
-            return None
-        try:
-            d = Decimal(str(value))
-        except (InvalidOperation, TypeError):
-            raise serializers.ValidationError("Invalid price format")
-        if d <= Decimal("0.00"):
-            raise serializers.ValidationError("Price must be strictly positive")
-        parts = str(value).split(".")
-        if len(parts) > 1 and len(parts[1]) > 2:
-            raise serializers.ValidationError("Price cannot have more than 2 decimal places")
-        return d.quantize(Decimal("0.01"))
 
 
 class InventoryAdjustmentSerializer(serializers.Serializer):
@@ -217,19 +197,6 @@ class OrderItemInputSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1)
 
 
-class OrderCreateSerializer(serializers.Serializer):
-    dealer_id = serializers.IntegerField(required=True)
-    items = OrderItemInputSerializer(many=True, required=True)
-
-    def validate_items(self, items):
-        if not items:
-            raise serializers.ValidationError("Order must contain at least one item")
-        skus = [item["sku"] for item in items]
-        if len(skus) != len(set(skus)):
-            raise serializers.ValidationError("Duplicate SKUs are not allowed in the same order")
-        return items
-
-
 class OrderUpdateSerializer(serializers.Serializer):
     items = OrderItemInputSerializer(many=True, required=True)
 
@@ -240,3 +207,8 @@ class OrderUpdateSerializer(serializers.Serializer):
         if len(skus) != len(set(skus)):
             raise serializers.ValidationError("Duplicate SKUs are not allowed in the same order")
         return items
+
+
+class OrderCreateSerializer(OrderUpdateSerializer):
+    dealer_id = serializers.IntegerField(required=True)
+

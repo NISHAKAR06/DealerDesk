@@ -28,11 +28,4 @@ urlpatterns = [
     # Supplier Sync API (§8)
     path("sync/supplier/", views.supplier_sync, name="supplier-sync"),
     path("sync/supplier/history/", views.supplier_sync_history, name="supplier-sync-history"),
-
-    # Forecasting & Reorder API (§10)
-    path("reorder-suggestions/", views.reorder_suggestions, name="reorder-suggestions"),
-    path("forecast/<str:sku>/", views.sku_forecast, name="sku-forecast"),
-
-    # Dealer Assistant API (§9)
-    path("assistant/chat/", views.assistant_chat, name="assistant-chat"),
 ]
